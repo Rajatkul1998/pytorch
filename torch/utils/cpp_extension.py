@@ -789,11 +789,11 @@ def CppExtension(name, sources, *args, **kwargs):
                 })
     '''
     include_dirs = kwargs.get('include_dirs', [])
-    include_dirs += include_paths()
+    include_dirs += include_paths(cuda=torch.version.cuda is not None)
     kwargs['include_dirs'] = include_dirs
 
     library_dirs = kwargs.get('library_dirs', [])
-    library_dirs += library_paths()
+    library_dirs += library_paths(cuda=torch.version.cuda is not None)
     kwargs['library_dirs'] = library_dirs
 
     libraries = kwargs.get('libraries', [])
@@ -949,6 +949,9 @@ def include_paths(cuda: bool = False) -> List[str]:
             paths.append(cuda_home_include)
         if CUDNN_HOME is not None:
             paths.append(os.path.join(CUDNN_HOME, 'include'))
+        cupti_dir = os.path.join('extras', 'CUPTI', 'include')
+        paths.append(_join_cuda_home(cupti_dir))
+    print("DEBUG: cpp_extension.py: include_paths = ", str(paths), ", cuda = ", cuda)
     return paths
 
 
@@ -970,7 +973,7 @@ def library_paths(cuda: bool = False) -> List[str]:
         paths.append(_join_rocm_home(lib_dir))
     elif cuda:
         if IS_WINDOWS:
-            lib_dir = 'lib/x64'
+            lib_dir = os.path.join('lib', 'x64')
         else:
             lib_dir = 'lib64'
             if (not os.path.exists(_join_cuda_home(lib_dir)) and
@@ -981,8 +984,11 @@ def library_paths(cuda: bool = False) -> List[str]:
                 lib_dir = 'lib'
 
         paths.append(_join_cuda_home(lib_dir))
+        cupti_dir = os.path.join('extras', 'CUPTI', 'lib64')
+        paths.append(_join_cuda_home(cupti_dir))
         if CUDNN_HOME is not None:
             paths.append(os.path.join(CUDNN_HOME, lib_dir))
+    print("DEBUG: cpp_extension.py: library_paths = ", str(paths), ", cuda = ", cuda)
     return paths
 
 
@@ -1257,7 +1263,7 @@ def _jit_compile(name,
         raise ValueError("`is_python_module` and `is_standalone` are mutually exclusive.")
 
     if with_cuda is None:
-        with_cuda = any(map(_is_cuda_file, sources))
+        with_cuda = any(map(_is_cuda_file, sources)) or (torch.version.cuda is not None)
     with_cudnn = any(['cudnn' in f for f in extra_ldflags or []])
     old_version = JIT_EXTENSION_VERSIONER.get_version(name)
     version = JIT_EXTENSION_VERSIONER.bump_version_if_changed(
@@ -1482,10 +1488,12 @@ def _prepare_ldflags(extra_ldflags, with_cuda, verbose, is_standalone):
         if verbose:
             print('Detected CUDA files, patching ldflags')
         if IS_WINDOWS:
-            extra_ldflags.append(f'/LIBPATH:{_join_cuda_home("lib/x64")}')
+            extra_ldflags.append(f"/LIBPATH:{_join_cuda_home(os.path.join('lib', 'x64'))}")
             extra_ldflags.append('cudart.lib')
+            extra_ldflags.append(f"/LIBPATH:{_join_cuda_home(os.path.join('extras', 'CUPTI', 'lib64'))}")
+            extra_ldflags.append('cupti.lib')
             if CUDNN_HOME is not None:
-                extra_ldflags.append(os.path.join(CUDNN_HOME, 'lib/x64'))
+                extra_ldflags.append(os.path.join(CUDNN_HOME, os.path.join('lib', 'x64')))
         elif not IS_HIP_EXTENSION:
             extra_ldflags.append(f'-L{_join_cuda_home("lib64")}')
             extra_ldflags.append('-lcudart')

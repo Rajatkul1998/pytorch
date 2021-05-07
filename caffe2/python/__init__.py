@@ -40,11 +40,23 @@ if sys.platform == "win32":
     else:
         cuda_path = ''
 
+    # Kineto (profiler) dependency on CUPTI
+    if torch_version.cuda:
+        cuda_version = torch_version.cuda
+        cuda_version_1 = cuda_version.replace('.', '_')
+        cuda_path_var = 'CUDA_PATH_V' + cuda_version_1
+        default_path = 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v' + cuda_version
+        cuda_extras_path = os.path.join(os.getenv(cuda_path_var, default_path), 'extras', 'CUPTI', 'lib64')
+    else:
+        cuda_extras_path = ''
+
     import ctypes
     kernel32 = ctypes.WinDLL('kernel32.dll', use_last_error=True)
-    dll_paths = list(filter(os.path.exists, [th_dll_path, py_dll_path, nvtoolsext_dll_path, cuda_path]))
+    dll_paths = list(filter(os.path.exists, [th_dll_path, py_dll_path, nvtoolsext_dll_path, cuda_path, cuda_extras_path]))
     with_load_library_flags = hasattr(kernel32, 'AddDllDirectory')
     prev_error_mode = kernel32.SetErrorMode(0x0001)
+
+    print("DEBUG: caffe2/python/__init__.py: dll_paths = ", str(dll_paths), ", cuda_path = ", cuda_path, ", cuda_extras_path = ", cuda_extras_path)
 
     kernel32.LoadLibraryW.restype = ctypes.c_void_p
     if with_load_library_flags:
